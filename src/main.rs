@@ -5,7 +5,6 @@ mod solvers;
 
 use rand;
 use std::cmp::PartialEq;
-use std::{f32, f64};
 use domain::{Point, Segment, Direction, SweepLineProblem, segments_intersection};
 use visualization::visualization;
 
