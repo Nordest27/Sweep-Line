@@ -1,7 +1,9 @@
 use std::io::Write;
+use std::time::Duration;
 
 #[derive(Clone)]
 #[derive(PartialEq)]
+#[derive(Debug)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
@@ -18,9 +20,31 @@ impl Point {
 
 #[derive(Clone)]
 #[derive(PartialEq)]
+#[derive(Debug)]
 pub struct Segment {
     pub ini: Point,
     pub end: Point,
+}
+use std::cmp::Ordering;
+
+impl Eq for Segment {}
+impl Ord for Segment {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Custom ordering logic, e.g., by comparing start points or any other criteria
+        self.ini.y.partial_cmp(&other.ini.y).unwrap().then_with(|| {
+            self.ini.x.partial_cmp(&other.ini.x).unwrap().then_with(|| {
+                self.end.y.partial_cmp(&other.end.y).unwrap().then_with(|| {
+                    self.end.x.partial_cmp(&other.end.x).unwrap()
+                })
+            })
+        })
+    }
+}
+
+impl PartialOrd for Segment {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(PartialEq)]
@@ -136,3 +160,185 @@ pub fn segments_intersection(s1: &Segment, s2: &Segment) -> Option<Segment> {
 
     return None;
 }
+
+#[derive(Clone)]
+#[derive(PartialEq)]
+#[derive(Debug)]
+pub struct Node{
+    pub key: Segment,
+    pub priority: i32,
+    pub left: Option<Box<Node>>,
+    pub right: Option<Box<Node>>,
+}
+
+#[derive(Clone)]
+pub struct Treap {
+    root: Option<Box<Node>>,
+}
+
+impl Treap {
+    pub fn new() -> Treap {
+        Treap { root: None }
+    }
+
+    fn split(
+        &self, node: Option<Box<Node>>, key: &Segment
+    ) -> (Option<Box<Node>>, Option<Box<Node>>) {
+        match node {
+            None => (None, None),
+            Some(mut node) => {
+                if node.key < *key {
+                    let (left, right) = self.split(node.right, key);
+                    node.right = left;
+                    (Some(node), right)
+                } else if node.key > *key {
+                    let (left, right) = self.split(node.left, key);
+                    node.left = right;
+                    (left, Some(node))
+                }
+                else {
+                    return (node.left, node.right)
+                }
+            }
+        }
+    }
+
+    pub fn insert(&mut self, key: Segment) {
+        let new_node = Node {
+            key: key,
+            priority: rand::random::<i32>(),
+            left: None,
+            right: None,
+        };
+        let (left, right) =
+            self.split(self.root.clone(), &new_node.key);
+        self.root = self.merge(self.merge(left, Some(Box::new(new_node))), right);
+    }
+
+    pub fn merge(
+        &self, left: Option<Box<Node>>, right: Option<Box<Node>>
+    ) -> Option<Box<Node>> {
+        match (left, right) {
+            (None, None) => None,
+            (Some(left), None) => Some(left),
+            (None, Some(right)) => Some(right),
+            (Some(mut left), Some(mut right)) => {
+                if left.priority > right.priority {
+                    left.right = self.merge(left.right, Some(right));
+                    Some(left)
+                } else {
+                    right.left = self.merge(Some(left), right.left);
+                    Some(right)
+                }
+            }
+        }
+    }
+
+    pub fn remove(&mut self, key: &Segment) {
+        let (left, right) = self.split(self.root.clone(), key);
+        let (_, right) = self.split(right, key);
+        self.root = self.merge(left, right);
+    }
+
+    pub fn find(&self, key: &Segment) -> bool {
+        let mut current = &self.root;
+        while let Some(node) = current {
+            if node.key < *key {
+                current = &node.right;
+            } else if node.key > *key {
+                current = &node.left;
+            } else {
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn successor(&self, key: &Segment) -> Option<&Segment> {
+        let mut current = &self.root;
+        let mut successor = None;
+        while let Some(node) = current {
+            if node.key > *key {
+                successor = Some(&node.key);
+                current = &node.left;
+            } else {
+                current = &node.right;
+            }
+        }
+        successor
+    }
+
+    pub fn predecessor(&self, key: &Segment) -> Option<&Segment> {
+        let mut current = &self.root;
+        let mut predecessor = None;
+        while let Some(node) = current {
+            if node.key < *key {
+                predecessor = Some(&node.key);
+                current = &node.right;
+            } else {
+                current = &node.left;
+            }
+        }
+        predecessor
+    }
+
+    fn inorder(&self, node: &Option<Box<Node>>) {
+        match node {
+            None => (),
+            Some(node) => {
+                self.inorder(&node.left);
+                print!("({}, {}), ({}, {}), ",
+                       node.key.ini.x, node.key.ini.y, node.key.end.x, node.key.end.y);
+                self.inorder(&node.right);
+            }
+        }
+    }
+    pub fn print_inorder(&self) {
+        println!("Inorder traversal:");
+        self.inorder(&self.root);
+        println!();
+    }
+}
+
+pub fn test_treap() {
+    let n = 20;
+    let mut treap = Treap::new();
+    for _ in 0..10000 {
+        let mut segments = Vec::new();
+        for i in 0..n {
+            let segment = Segment {
+                ini: Point {
+                    x: (rand::random::<i32>() % 10) as f32,
+                    y: (rand::random::<i32>() % 10) as f32
+                },
+                end: Point { x: i as f32, y: i as f32 },
+            };
+            treap.insert(segment.clone());
+            segments.push(segment);
+        }
+        segments.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!("---------------------------------------");
+        println!("Segments inserted in the treap:");
+        treap.print_inorder();
+        println!();
+        println!("Segments inserted in the list:");
+        for i in 0..n {
+            print!("({}, {}), ({}, {}), ", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+        }
+        println!();
+        //sleep(Duration::from_nanos(10000));
+        for i in 0..n {
+            assert_eq!(treap.successor(&segments[i]), if i == n-1 { None } else { Some(&segments[i + 1]) });
+            assert_eq!(treap.predecessor(&segments[i]), if i == 0 { None } else { Some(&segments[i - 1]) });
+        }
+        for i in 0..n {
+            treap.remove(&segments[i]);
+            assert_eq!(treap.find(&segments[i]), false);
+        }
+        assert_eq!(treap.root, None);
+    }
+}
+
+
+
+

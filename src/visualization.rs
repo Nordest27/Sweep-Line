@@ -9,7 +9,7 @@ use ggez::conf::WindowMode;
 use ggez::graphics::{self, DrawMode};
 use ggez::input::keyboard::KeyInput;
 use crate::domain::{Point, Segment, SweepLineProblem, Direction, distance};
-use crate::solvers::{naive_intersection_solver};
+use crate::solvers::{naive_intersection_solver, sweep_line_solver};
 
 struct MainState {
     sweep_line_problem: SweepLineProblem,
@@ -24,7 +24,7 @@ struct MainState {
 impl MainState {
     fn new() -> Self {
         // Initialize your SweepLineProblem here
-        let mut sweep_line_problem = SweepLineProblem::load("problems/sweep_line_problem_5.txt");
+        let mut sweep_line_problem = SweepLineProblem::load("problems/sweep_line_problem_2.txt");
         MainState {
             sweep_line_problem,
             intersection_alpha: 0.0,
@@ -40,7 +40,7 @@ impl MainState {
 impl EventHandler for MainState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         self.intersection_alpha = ((self.init_time.elapsed().as_secs_f32()*2.0).sin() + 1.0) / 2.0 + 0.1;
-        naive_intersection_solver(&mut self.sweep_line_problem);
+        sweep_line_solver(&mut self.sweep_line_problem);
         if self.mouse_button != MouseButton::Left {
             self.highlight_point_index = None;
             for i in 0..self.sweep_line_problem.segments.len() {
