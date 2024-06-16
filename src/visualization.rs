@@ -18,7 +18,7 @@ struct MainState {
     mouse_button: MouseButton,
     mouse_position: Point,
     highlight_point_index: Option<(usize, usize)>,
-    grid_size: f32,
+    grid_size: f64,
 }
 
 impl MainState {
@@ -39,7 +39,7 @@ impl MainState {
 
 impl EventHandler for MainState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
-        self.intersection_alpha = ((self.init_time.elapsed().as_secs_f32()*2.0).sin() + 1.0) / 2.0 + 0.1;
+        self.intersection_alpha = (((self.init_time.elapsed().as_secs_f64()*2.0).sin() + 1.0) / 2.0 + 0.1) as f32;
         sweep_line_solver(&mut self.sweep_line_problem);
         if self.mouse_button != MouseButton::Left {
             self.highlight_point_index = None;
@@ -65,13 +65,13 @@ impl EventHandler for MainState {
         let (width, height) = ctx.gfx.size();
 
         //Draw grid
-        for i in 0..(width / self.grid_size) as i32 {
+        for i in 0..(width / self.grid_size as f32) as i32 {
             canvas.draw(
                 &graphics::Mesh::new_line(
                     ctx,
                     &[
-                        Vec2::new(i as f32 * self.grid_size, 0.0),
-                        Vec2::new(i as f32 * self.grid_size, height)
+                        Vec2::new((i as f64 * self.grid_size) as f32, 0.0),
+                        Vec2::new((i as f64 * self.grid_size) as f32, height)
                     ],
                     1.0,
                     graphics::Color::from([0.5, 0.5, 0.5, 0.2]),
@@ -79,13 +79,13 @@ impl EventHandler for MainState {
                 graphics::DrawParam::default(),
             );
         }
-        for i in 0..(height / self.grid_size) as i32 {
+        for i in 0..(height / self.grid_size as f32) as i32 {
             canvas.draw(
                 &graphics::Mesh::new_line(
                     ctx,
                     &[
-                        Vec2::new(0.0, i as f32 * self.grid_size),
-                        Vec2::new(width, i as f32 * self.grid_size),
+                        Vec2::new(0.0, (i as f64 * self.grid_size) as f32),
+                        Vec2::new(width, (i as f64 * self.grid_size) as f32),
                     ],
                     1.0,
                     graphics::Color::from([0.5, 0.5, 0.5, 0.2]),
@@ -100,8 +100,8 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_line(
                     ctx,
                     &[
-                        Vec2::new(segment.ini.x, segment.ini.y),
-                        Vec2::new(segment.end.x, segment.end.y),
+                        Vec2::new(segment.ini.x as f32, segment.ini.y as f32),
+                        Vec2::new(segment.end.x as f32, segment.end.y as f32),
                     ],
                     2.0,
                     graphics::Color::from([1.0, 1.0, 1.0, 1.0]),
@@ -113,7 +113,7 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_circle(
                     ctx,
                     DrawMode::fill(),
-                    Vec2::new(segment.ini.x, segment.ini.y),
+                    Vec2::new(segment.ini.x as f32, segment.ini.y as f32),
                     2.0,
                     0.1,
                     graphics::Color::from([1.0, 1.0, 1.0, 1.0]),
@@ -125,7 +125,7 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_circle(
                     ctx,
                     DrawMode::fill(),
-                    Vec2::new(segment.end.x, segment.end.y),
+                    Vec2::new(segment.end.x as f32, segment.end.y as f32),
                     2.0,
                     0.1,
                     graphics::Color::from([1.0, 1.0, 1.0, 1.0]),
@@ -138,8 +138,8 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_line(
                     ctx,
                     &[
-                        Vec2::new(segment.ini.x, segment.ini.y),
-                        Vec2::new(segment.end.x, segment.end.y),
+                        Vec2::new(segment.ini.x as f32, segment.ini.y as f32),
+                        Vec2::new(segment.end.x as f32, segment.end.y as f32),
                     ],
                     5.0,
                     graphics::Color::from([1.0, 0.0, 0.0, self.intersection_alpha]),
@@ -151,7 +151,7 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_circle(
                     ctx,
                     DrawMode::fill(),
-                    Vec2::new(segment.ini.x, segment.ini.y),
+                    Vec2::new(segment.ini.x as f32, segment.ini.y as f32),
                     5.0,
                     0.1,
                     graphics::Color::from([1.0, 0.0, 0.0, self.intersection_alpha]),
@@ -163,7 +163,7 @@ impl EventHandler for MainState {
                 &graphics::Mesh::new_circle(
                     ctx,
                     DrawMode::fill(),
-                    Vec2::new(segment.end.x, segment.end.y),
+                    Vec2::new(segment.end.x as f32, segment.end.y as f32),
                     5.0,
                     0.1,
                     graphics::Color::from([1.0, 0.0, 0.0, self.intersection_alpha]),
@@ -182,7 +182,7 @@ impl EventHandler for MainState {
                     &graphics::Mesh::new_circle(
                         ctx,
                         DrawMode::fill(),
-                        Vec2::new(point.x, point.y),
+                        Vec2::new(point.x as f32, point.y as f32),
                         5.0,
                         0.1,
                         graphics::Color::from([0.0, 0.0, 1.0, 1.0]),
@@ -217,8 +217,8 @@ impl EventHandler for MainState {
             else {
                 self.sweep_line_problem.segments.push(
                     Segment {
-                        ini: Point { x: _x, y: _y }.to_grid(self.grid_size),
-                        end: Point { x: _x, y: _y }.to_grid(self.grid_size)
+                        ini: Point { x: _x as f64, y: _y as f64 }.to_grid(self.grid_size),
+                        end: Point { x: _x as f64, y: _y as f64 }.to_grid(self.grid_size),
                     }
                 );
             }
@@ -234,13 +234,13 @@ impl EventHandler for MainState {
     }
 
     fn mouse_motion_event(&mut self, _ctx: &mut Context, x: f32, y: f32, _dx: f32, _dy: f32) -> Result<(), GameError> {
-        self.mouse_position = Point { x, y };
+        self.mouse_position = Point { x: x as f64, y: y as f64 };
         if self.mouse_button == MouseButton::Left {
             if let Some((i, j)) = self.highlight_point_index {
                 if j == 0 {
-                    self.sweep_line_problem.segments[i].ini = Point { x, y }.to_grid(self.grid_size);
+                    self.sweep_line_problem.segments[i].ini = Point { x: x as f64, y: y as f64 }.to_grid(self.grid_size);
                 } else {
-                    self.sweep_line_problem.segments[i].end = Point { x, y }.to_grid(self.grid_size);
+                    self.sweep_line_problem.segments[i].end = Point { x: x as f64, y: y as f64 }.to_grid(self.grid_size);
                 }
             }
         }

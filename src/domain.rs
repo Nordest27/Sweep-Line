@@ -1,16 +1,16 @@
-use std::io::Write;
+use std::io::{BufRead, Write};
 use std::time::Duration;
 
 #[derive(Clone)]
 #[derive(PartialEq)]
 #[derive(Debug)]
 pub struct Point {
-    pub x: f32,
-    pub y: f32,
+    pub x: f64,
+    pub y: f64,
 }
 
 impl Point {
-    pub fn to_grid(&self, grid_size: f32) -> Point {
+    pub fn to_grid(&self, grid_size: f64) -> Point {
         return Point {
             x: (self.x / grid_size).round() * grid_size,
             y: (self.y / grid_size).round() * grid_size,
@@ -27,7 +27,23 @@ pub struct Segment {
 }
 use std::cmp::Ordering;
 
+impl Segment {
+    pub fn to_grid(&self, grid_size: f64) -> Segment {
+        return Segment {
+            ini: self.ini.to_grid(grid_size),
+            end: self.end.to_grid(grid_size),
+        };
+    }
+
+    pub fn interpolate_y(&self, x: f64) -> f64 {
+        if self.ini.x == self.end.x {
+            return self.ini.y;
+        }
+        return self.ini.y + (self.end.y - self.ini.y) * (x - self.ini.x) / (self.end.x - self.ini.x);
+    }
+}
 impl Eq for Segment {}
+
 impl Ord for Segment {
     fn cmp(&self, other: &Self) -> Ordering {
         // Custom ordering logic, e.g., by comparing start points or any other criteria
@@ -58,7 +74,7 @@ pub enum Direction {
 pub struct SweepLineProblem {
     pub segments: Vec<Segment>,
     pub result: Vec<Segment>,
-    pub time: f32,
+    pub time: f64,
     pub basic_operations: i32
 }
 
@@ -72,10 +88,10 @@ impl SweepLineProblem {
         for _ in 0..n_segments {
             let line = lines.next().unwrap();
             let mut values = line.split_whitespace();
-            let x1 = values.next().unwrap().parse::<f32>().unwrap();
-            let y1 = values.next().unwrap().parse::<f32>().unwrap();
-            let x2 = values.next().unwrap().parse::<f32>().unwrap();
-            let y2 = values.next().unwrap().parse::<f32>().unwrap();
+            let x1 = values.next().unwrap().parse::<f64>().unwrap();
+            let y1 = values.next().unwrap().parse::<f64>().unwrap();
+            let x2 = values.next().unwrap().parse::<f64>().unwrap();
+            let y2 = values.next().unwrap().parse::<f64>().unwrap();
             segments.push(Segment{ini: Point{x: x1, y: y1}, end: Point{x: x2, y: y2}});
         }
         return SweepLineProblem{segments, result: Vec::new(), time: 0.0, basic_operations: 0};
@@ -97,7 +113,7 @@ impl SweepLineProblem {
     }
 
 }
-pub fn distance(p1: &Point, p2: &Point) -> f32 {
+pub fn distance(p1: &Point, p2: &Point) -> f64 {
     return ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt();
 }
 
@@ -121,10 +137,10 @@ pub fn intersection_point(s1: &Segment, s2: &Segment) -> Segment {
 }
 
 pub fn collinear_point_on_segment(p: &Point, s: &Segment) -> bool {
-    let x_min = f32::min(s.ini.x, s.end.x);
-    let x_max = f32::max(s.ini.x, s.end.x);
-    let y_min = f32::min(s.ini.y, s.end.y);
-    let y_max = f32::max(s.ini.y, s.end.y);
+    let x_min = f64::min(s.ini.x, s.end.x);
+    let x_max = f64::max(s.ini.x, s.end.x);
+    let y_min = f64::min(s.ini.y, s.end.y);
+    let y_max = f64::max(s.ini.y, s.end.y);
     return x_min <= p.x && p.x <= x_max && y_min <= p.y && p.y <= y_max;
 }
 
@@ -175,35 +191,40 @@ pub struct Node{
 pub struct Treap {
     root: Option<Box<Node>>,
 }
+pub const EPSILON: f64 = 1e-9;
 
 impl Treap {
     pub fn new() -> Treap {
         Treap { root: None }
     }
 
-    fn split(
-        &self, node: Option<Box<Node>>, key: &Segment
+    fn split_by_y(
+        &self, node: Option<Box<Node>>, key: &Segment, x: f64
     ) -> (Option<Box<Node>>, Option<Box<Node>>) {
         match node {
             None => (None, None),
             Some(mut node) => {
-                if node.key < *key {
-                    let (left, right) = self.split(node.right, key);
+                /*println!("Interpolation results ({}, {}): {}, ({}, {}): {}",
+                         node.key.ini.x, node.key.ini.y, node.key.interpolate_y(x),
+                         key.ini.x, key.ini.y, key.interpolate_y(x));*/
+                let node_interpolation = node.key.interpolate_y(x);
+                let key_interpolation = key.interpolate_y(x);
+                if node_interpolation < key_interpolation - EPSILON {
+                    let (left, right) = self.split_by_y(node.right, key, x);
                     node.right = left;
                     (Some(node), right)
-                } else if node.key > *key {
-                    let (left, right) = self.split(node.left, key);
+                } else if node_interpolation > key_interpolation + EPSILON {
+                    let (left, right) = self.split_by_y(node.left, key, x);
                     node.left = right;
                     (left, Some(node))
-                }
-                else {
-                    return (node.left, node.right)
+                } else {
+                    (node.left, node.right)
                 }
             }
         }
     }
 
-    pub fn insert(&mut self, key: Segment) {
+    pub fn insert(&mut self, key: Segment, x: f64) {
         let new_node = Node {
             key: key,
             priority: rand::random::<i32>(),
@@ -211,7 +232,7 @@ impl Treap {
             right: None,
         };
         let (left, right) =
-            self.split(self.root.clone(), &new_node.key);
+            self.split_by_y(self.root.clone(), &new_node.key, x);
         self.root = self.merge(self.merge(left, Some(Box::new(new_node))), right);
     }
 
@@ -234,31 +255,37 @@ impl Treap {
         }
     }
 
-    pub fn remove(&mut self, key: &Segment) {
-        let (left, right) = self.split(self.root.clone(), key);
-        let (_, right) = self.split(right, key);
+    pub fn remove(&mut self, key: &Segment, x: f64) -> bool {
+        if !self.find(key, x) {
+            return false;
+        }
+        let (left, right) =
+            self.split_by_y(self.root.clone(), key, x);
         self.root = self.merge(left, right);
+        return true;
     }
 
-    pub fn find(&self, key: &Segment) -> bool {
+    pub fn find(&self, key: &Segment, x: f64) -> bool {
         let mut current = &self.root;
         while let Some(node) = current {
-            if node.key < *key {
-                current = &node.right;
-            } else if node.key > *key {
+            if node.key.interpolate_y(x) > key.interpolate_y(x) + EPSILON {
                 current = &node.left;
+            } else if node.key.interpolate_y(x) < key.interpolate_y(x) - EPSILON {
+                current = &node.right;
             } else {
                 return true;
             }
         }
-        false
+        return false;
     }
 
-    pub fn successor(&self, key: &Segment) -> Option<&Segment> {
+    pub fn successor(&self, key: &Segment, x: f64) -> Option<&Segment> {
         let mut current = &self.root;
         let mut successor = None;
         while let Some(node) = current {
-            if node.key > *key {
+            let node_interpolation = node.key.interpolate_y(x);
+            let key_interpolation = key.interpolate_y(x);
+            if node_interpolation > key_interpolation {
                 successor = Some(&node.key);
                 current = &node.left;
             } else {
@@ -268,11 +295,13 @@ impl Treap {
         successor
     }
 
-    pub fn predecessor(&self, key: &Segment) -> Option<&Segment> {
+    pub fn predecessor(&self, key: &Segment, x: f64) -> Option<&Segment> {
         let mut current = &self.root;
         let mut predecessor = None;
         while let Some(node) = current {
-            if node.key < *key {
+            let node_interpolation = node.key.interpolate_y(x);
+            let key_interpolation = key.interpolate_y(x);
+            if node_interpolation < key_interpolation {
                 predecessor = Some(&node.key);
                 current = &node.right;
             } else {
@@ -287,7 +316,7 @@ impl Treap {
             None => (),
             Some(node) => {
                 self.inorder(&node.left);
-                print!("({}, {}), ({}, {}), ",
+                print!("(ini: ({}, {}), end: ({}, {})), ",
                        node.key.ini.x, node.key.ini.y, node.key.end.x, node.key.end.y);
                 self.inorder(&node.right);
             }
@@ -301,39 +330,52 @@ impl Treap {
 }
 
 pub fn test_treap() {
-    let n = 20;
+    let n = 25;
     let mut treap = Treap::new();
     for _ in 0..10000 {
         let mut segments = Vec::new();
         for i in 0..n {
             let segment = Segment {
                 ini: Point {
-                    x: (rand::random::<i32>() % 10) as f32,
-                    y: (rand::random::<i32>() % 10) as f32
+                    x: rand::random::<f64>(),
+                    y: rand::random::<f64>(),
                 },
-                end: Point { x: i as f32, y: i as f32 },
+                end: Point {
+                    x: rand::random::<f64>(),
+                    y: rand::random::<f64>(),
+                }
             };
-            treap.insert(segment.clone());
+            treap.insert(segment.clone(), 0.0);
             segments.push(segment);
         }
-        segments.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        segments.sort_by(|a, b| a.interpolate_y(0.0).partial_cmp(&b.interpolate_y(0.0)).unwrap());
         println!("---------------------------------------");
         println!("Segments inserted in the treap:");
         treap.print_inorder();
         println!();
         println!("Segments inserted in the list:");
         for i in 0..n {
-            print!("({}, {}), ({}, {}), ", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+            println!("({}, {}), ({}, {}), ",
+                   segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+        }
+        println!();
+        println!("Y values");
+        for i in 0..n {
+            print!("{}, ", segments[i].interpolate_y(0.0));
         }
         println!();
         //sleep(Duration::from_nanos(10000));
         for i in 0..n {
-            assert_eq!(treap.successor(&segments[i]), if i == n-1 { None } else { Some(&segments[i + 1]) });
-            assert_eq!(treap.predecessor(&segments[i]), if i == 0 { None } else { Some(&segments[i - 1]) });
+            println!("Successor and predecessor of ({}, {}), ({}, {}): ",
+                   segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+            assert_eq!(treap.successor(&segments[i], 0.0), if i == n-1 { None } else { Some(&segments[i + 1]) });
+            assert_eq!(treap.predecessor(&segments[i], 0.0), if i == 0 { None } else { Some(&segments[i - 1]) });
         }
         for i in 0..n {
-            treap.remove(&segments[i]);
-            assert_eq!(treap.find(&segments[i]), false);
+            println!("Removing ({}, {}), ({}, {})", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+            assert_eq!(treap.remove(&segments[i], 0.0), true);
+            assert_eq!(treap.find(&segments[i], 0.0), false);
+            treap.print_inorder();
         }
         assert_eq!(treap.root, None);
     }
