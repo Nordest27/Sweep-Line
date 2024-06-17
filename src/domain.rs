@@ -1,6 +1,6 @@
 use std::io::{BufRead, Write};
 use std::time::Duration;
-
+use std::collections::HashMap;
 #[derive(Clone)]
 #[derive(PartialEq)]
 #[derive(Debug)]
@@ -26,6 +26,7 @@ pub struct Segment {
     pub end: Point,
 }
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 
 impl Segment {
     pub fn to_grid(&self, grid_size: f64) -> Segment {
@@ -41,6 +42,24 @@ impl Segment {
         }
         return self.ini.y + (self.end.y - self.ini.y) * (x - self.ini.x) / (self.end.x - self.ini.x);
     }
+
+    pub fn slope(&self) -> f64 {
+        if self.end.x == self.ini.x {
+            return f64::INFINITY;
+        }
+        return (self.end.y - self.ini.y) / (self.end.x - self.ini.x);
+    }
+}
+
+impl Hash for Segment
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (self.ini.x.to_bits().hash(state),
+        self.ini.y.to_bits().hash(state),
+        self.end.x.to_bits().hash(state),
+        self.end.y.to_bits().hash(state)).hash(state);
+    }
+
 }
 impl Eq for Segment {}
 
@@ -48,11 +67,18 @@ impl Ord for Segment {
     fn cmp(&self, other: &Self) -> Ordering {
         // Custom ordering logic, e.g., by comparing start points or any other criteria
         self.ini.y.partial_cmp(&other.ini.y).unwrap().then_with(|| {
-            self.ini.x.partial_cmp(&other.ini.x).unwrap().then_with(|| {
-                self.end.y.partial_cmp(&other.end.y).unwrap().then_with(|| {
-                    self.end.x.partial_cmp(&other.end.x).unwrap()
-                })
-            })
+            let self_slope = self.slope();
+            let other_slope = other.slope();
+            if self_slope.is_infinite() && other_slope.is_infinite() {
+                return Ordering::Equal;
+            }
+            if self_slope.is_infinite() {
+                return Ordering::Less;
+            }
+            if other_slope.is_infinite() {
+                return Ordering::Greater;
+            }
+            return self_slope.partial_cmp(&other_slope).unwrap();
         })
     }
 }
@@ -198,23 +224,20 @@ impl Treap {
         Treap { root: None }
     }
 
-    fn split_by_y(
-        &self, node: Option<Box<Node>>, key: &Segment, x: f64
+    fn split(
+        &self, node: Option<Box<Node>>, key: &Segment
     ) -> (Option<Box<Node>>, Option<Box<Node>>) {
         match node {
             None => (None, None),
             Some(mut node) => {
-                /*println!("Interpolation results ({}, {}): {}, ({}, {}): {}",
-                         node.key.ini.x, node.key.ini.y, node.key.interpolate_y(x),
-                         key.ini.x, key.ini.y, key.interpolate_y(x));*/
-                let node_interpolation = node.key.interpolate_y(x);
-                let key_interpolation = key.interpolate_y(x);
-                if node_interpolation < key_interpolation - EPSILON {
-                    let (left, right) = self.split_by_y(node.right, key, x);
+                if *key > node.key {
+                    let (left, right) =
+                        self.split(node.right, key);
                     node.right = left;
                     (Some(node), right)
-                } else if node_interpolation > key_interpolation + EPSILON {
-                    let (left, right) = self.split_by_y(node.left, key, x);
+                } else if *key < node.key {
+                    let (left, right) =
+                        self.split(node.left, key);
                     node.left = right;
                     (left, Some(node))
                 } else {
@@ -224,7 +247,7 @@ impl Treap {
         }
     }
 
-    pub fn insert(&mut self, key: Segment, x: f64) {
+    pub fn insert(&mut self, key: Segment) {
         let new_node = Node {
             key: key,
             priority: rand::random::<i32>(),
@@ -232,7 +255,7 @@ impl Treap {
             right: None,
         };
         let (left, right) =
-            self.split_by_y(self.root.clone(), &new_node.key, x);
+            self.split(self.root.clone(), &new_node.key);
         self.root = self.merge(self.merge(left, Some(Box::new(new_node))), right);
     }
 
@@ -255,37 +278,40 @@ impl Treap {
         }
     }
 
-    pub fn remove(&mut self, key: &Segment, x: f64) -> bool {
-        if !self.find(key, x) {
+    fn find_node(&self, node: Option<Box<Node>>, key: &Segment) -> Option<Box<Node>> {
+        match node {
+            None => None,
+            Some(node) => {
+                if *key < node.key {
+                    self.find_node(node.left, key)
+                } else if *key > node.key {
+                    self.find_node(node.right, key)
+                } else {
+                    Some(node)
+                }
+            }
+        }
+    }
+
+    pub fn find(&self, key: &Segment) -> bool {
+        self.find_node(self.root.clone(), key).is_some()
+    }
+    pub fn remove(&mut self, key: &Segment) -> bool {
+        if !self.find(key) {
             return false;
         }
         let (left, right) =
-            self.split_by_y(self.root.clone(), key, x);
+            self.split(self.root.clone(), key);
         self.root = self.merge(left, right);
         return true;
     }
 
-    pub fn find(&self, key: &Segment, x: f64) -> bool {
-        let mut current = &self.root;
-        while let Some(node) = current {
-            if node.key.interpolate_y(x) > key.interpolate_y(x) + EPSILON {
-                current = &node.left;
-            } else if node.key.interpolate_y(x) < key.interpolate_y(x) - EPSILON {
-                current = &node.right;
-            } else {
-                return true;
-            }
-        }
-        return false;
-    }
 
-    pub fn successor(&self, key: &Segment, x: f64) -> Option<&Segment> {
+    pub fn successor(&self, key: &Segment) -> Option<&Segment> {
         let mut current = &self.root;
         let mut successor = None;
         while let Some(node) = current {
-            let node_interpolation = node.key.interpolate_y(x);
-            let key_interpolation = key.interpolate_y(x);
-            if node_interpolation > key_interpolation {
+            if *key < node.key {
                 successor = Some(&node.key);
                 current = &node.left;
             } else {
@@ -295,13 +321,11 @@ impl Treap {
         successor
     }
 
-    pub fn predecessor(&self, key: &Segment, x: f64) -> Option<&Segment> {
+    pub fn predecessor(&self, key: &Segment) -> Option<&Segment> {
         let mut current = &self.root;
         let mut predecessor = None;
         while let Some(node) = current {
-            let node_interpolation = node.key.interpolate_y(x);
-            let key_interpolation = key.interpolate_y(x);
-            if node_interpolation < key_interpolation {
+            if *key > node.key {
                 predecessor = Some(&node.key);
                 current = &node.right;
             } else {
@@ -316,7 +340,7 @@ impl Treap {
             None => (),
             Some(node) => {
                 self.inorder(&node.left);
-                print!("(ini: ({}, {}), end: ({}, {})), ",
+                println!("(ini: ({}, {}), end: ({}, {}))",
                        node.key.ini.x, node.key.ini.y, node.key.end.x, node.key.end.y);
                 self.inorder(&node.right);
             }
@@ -330,9 +354,10 @@ impl Treap {
 }
 
 pub fn test_treap() {
-    let n = 25;
+    let n = 50;
     let mut treap = Treap::new();
     for _ in 0..10000 {
+        let x = rand::random::<f64>();
         let mut segments = Vec::new();
         for i in 0..n {
             let segment = Segment {
@@ -345,37 +370,38 @@ pub fn test_treap() {
                     y: rand::random::<f64>(),
                 }
             };
-            treap.insert(segment.clone(), 0.0);
-            segments.push(segment);
+            treap.insert(segment.clone());
+            segments.push(segment.clone());
         }
-        segments.sort_by(|a, b| a.interpolate_y(0.0).partial_cmp(&b.interpolate_y(0.0)).unwrap());
-        println!("---------------------------------------");
+        segments.sort_by(|a, b| a.cmp(b));
+        // println!("---------------------------------------");
         println!("Segments inserted in the treap:");
         treap.print_inorder();
-        println!();
+        //println!();
         println!("Segments inserted in the list:");
         for i in 0..n {
             println!("({}, {}), ({}, {}), ",
                    segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
         }
+        /*
         println!();
         println!("Y values");
         for i in 0..n {
             print!("{}, ", segments[i].interpolate_y(0.0));
         }
-        println!();
+        println!();*/
         //sleep(Duration::from_nanos(10000));
         for i in 0..n {
-            println!("Successor and predecessor of ({}, {}), ({}, {}): ",
-                   segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
-            assert_eq!(treap.successor(&segments[i], 0.0), if i == n-1 { None } else { Some(&segments[i + 1]) });
-            assert_eq!(treap.predecessor(&segments[i], 0.0), if i == 0 { None } else { Some(&segments[i - 1]) });
+            //println!("Successor and predecessor of ({}, {}), ({}, {}): ",
+            //       segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+            assert_eq!(treap.successor(&segments[i]), if i == n-1 { None } else { Some(&segments[i + 1]) });
+            assert_eq!(treap.predecessor(&segments[i]), if i == 0 { None } else { Some(&segments[i - 1]) });
         }
         for i in 0..n {
-            println!("Removing ({}, {}), ({}, {})", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
-            assert_eq!(treap.remove(&segments[i], 0.0), true);
-            assert_eq!(treap.find(&segments[i], 0.0), false);
-            treap.print_inorder();
+            //println!("Removing ({}, {}), ({}, {})", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
+            assert_eq!(treap.remove(&segments[i]), true);
+            assert_eq!(treap.find(&segments[i]), false);
+            //treap.print_inorder();
         }
         assert_eq!(treap.root, None);
     }
