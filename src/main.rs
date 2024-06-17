@@ -10,7 +10,7 @@ use solvers::test_sweep_line_solver;
 use visualization::visualization;
 
 fn main() {
-    test_treap();
+    //test_treap();
     //test_sweep_line_solver();
-    //visualization().unwrap();
+    visualization().unwrap();
 }

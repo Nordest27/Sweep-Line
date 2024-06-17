@@ -24,7 +24,7 @@ struct MainState {
 impl MainState {
     fn new() -> Self {
         // Initialize your SweepLineProblem here
-        let mut sweep_line_problem = SweepLineProblem::load("problems/sweep_line_problem_2.txt");
+        let mut sweep_line_problem = SweepLineProblem::load("problems/sweep_line_problem_12.txt");
         MainState {
             sweep_line_problem,
             intersection_alpha: 0.0,
@@ -32,7 +32,7 @@ impl MainState {
             mouse_button: MouseButton::Other(0),
             mouse_position: Point { x: 0.0, y: 0.0 },
             highlight_point_index: None,
-            grid_size: 50.0,
+            grid_size: 10.0,
         }
     }
 }
@@ -41,6 +41,7 @@ impl EventHandler for MainState {
     fn update(&mut self, _ctx: &mut Context) -> GameResult<()> {
         self.intersection_alpha = (((self.init_time.elapsed().as_secs_f64()*2.0).sin() + 1.0) / 2.0 + 0.1) as f32;
         sweep_line_solver(&mut self.sweep_line_problem);
+        //naive_intersection_solver(&mut self.sweep_line_problem);
         if self.mouse_button != MouseButton::Left {
             self.highlight_point_index = None;
             for i in 0..self.sweep_line_problem.segments.len() {
