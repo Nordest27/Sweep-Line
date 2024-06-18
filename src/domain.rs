@@ -1,7 +1,5 @@
 use std::io::{BufRead, Write};
-use std::time::Duration;
-use std::collections::HashMap;
-#[derive(Clone)]
+#[derive(Clone, PartialOrd)]
 #[derive(PartialEq)]
 #[derive(Debug)]
 pub struct Point {
@@ -78,7 +76,13 @@ impl Ord for Segment {
             if other_slope.is_infinite() {
                 return Ordering::Greater;
             }
-            return self_slope.partial_cmp(&other_slope).unwrap();
+            return self_slope.partial_cmp(&other_slope).unwrap().then_with(|| {
+                self.ini.x.partial_cmp(&other.ini.x).unwrap().then_with(|| {
+                    self.end.y.partial_cmp(&other.end.y).unwrap().then_with(|| {
+                        self.end.x.partial_cmp(&other.end.x).unwrap()
+                    })
+                })
+            })
         })
     }
 }
@@ -217,7 +221,6 @@ pub struct Node{
 pub struct Treap {
     root: Option<Box<Node>>,
 }
-pub const EPSILON: f64 = 1e-9;
 
 impl Treap {
     pub fn new() -> Treap {
@@ -225,19 +228,20 @@ impl Treap {
     }
 
     fn split(
-        &self, node: Option<Box<Node>>, key: &Segment
+        &self, node: Option<Box<Node>>, key: &Segment, basic_operations: &mut i32
     ) -> (Option<Box<Node>>, Option<Box<Node>>) {
+        *basic_operations += 1;
         match node {
             None => (None, None),
             Some(mut node) => {
                 if *key > node.key {
                     let (left, right) =
-                        self.split(node.right, key);
+                        self.split(node.right, key, basic_operations);
                     node.right = left;
                     (Some(node), right)
                 } else if *key < node.key {
                     let (left, right) =
-                        self.split(node.left, key);
+                        self.split(node.left, key, basic_operations);
                     node.left = right;
                     (left, Some(node))
                 } else {
@@ -247,7 +251,7 @@ impl Treap {
         }
     }
 
-    pub fn insert(&mut self, key: Segment) {
+    pub fn insert(&mut self, key: Segment, basic_operations: &mut i32) {
         let new_node = Node {
             key: key,
             priority: rand::random::<i32>(),
@@ -255,37 +259,46 @@ impl Treap {
             right: None,
         };
         let (left, right) =
-            self.split(self.root.clone(), &new_node.key);
-        self.root = self.merge(self.merge(left, Some(Box::new(new_node))), right);
+            self.split(self.root.clone(), &new_node.key, basic_operations);
+        self.root = self.merge(
+            self.merge(
+                left, Some(Box::new(new_node)), basic_operations
+            ),
+            right, basic_operations
+        );
     }
 
     pub fn merge(
-        &self, left: Option<Box<Node>>, right: Option<Box<Node>>
+        &self, left: Option<Box<Node>>, right: Option<Box<Node>>, basic_operations: &mut i32
     ) -> Option<Box<Node>> {
+        *basic_operations += 1;
         match (left, right) {
             (None, None) => None,
             (Some(left), None) => Some(left),
             (None, Some(right)) => Some(right),
             (Some(mut left), Some(mut right)) => {
                 if left.priority > right.priority {
-                    left.right = self.merge(left.right, Some(right));
+                    left.right = self.merge(left.right, Some(right), basic_operations);
                     Some(left)
                 } else {
-                    right.left = self.merge(Some(left), right.left);
+                    right.left = self.merge(Some(left), right.left, basic_operations);
                     Some(right)
                 }
             }
         }
     }
 
-    fn find_node(&self, node: Option<Box<Node>>, key: &Segment) -> Option<Box<Node>> {
+    fn find_node(
+        &self, node: Option<Box<Node>>, key: &Segment, basic_operations: &mut i32
+    ) -> Option<Box<Node>> {
+        *basic_operations += 1;
         match node {
             None => None,
             Some(node) => {
                 if *key < node.key {
-                    self.find_node(node.left, key)
+                    self.find_node(node.left, key, basic_operations)
                 } else if *key > node.key {
-                    self.find_node(node.right, key)
+                    self.find_node(node.right, key, basic_operations)
                 } else {
                     Some(node)
                 }
@@ -293,24 +306,27 @@ impl Treap {
         }
     }
 
-    pub fn find(&self, key: &Segment) -> bool {
-        self.find_node(self.root.clone(), key).is_some()
+    pub fn find(&self, key: &Segment, basic_operations: &mut i32) -> bool {
+        self.find_node(self.root.clone(), key, basic_operations).is_some()
     }
-    pub fn remove(&mut self, key: &Segment) -> bool {
-        if !self.find(key) {
+    pub fn remove(&mut self, key: &Segment, basic_operations: &mut i32) -> bool {
+        if !self.find(key, basic_operations) {
             return false;
         }
         let (left, right) =
-            self.split(self.root.clone(), key);
-        self.root = self.merge(left, right);
+            self.split(self.root.clone(), key, basic_operations);
+        self.root = self.merge(left, right, basic_operations);
         return true;
     }
 
 
-    pub fn successor(&self, key: &Segment) -> Option<&Segment> {
+    pub fn successor(
+        &self, key: &Segment, basic_operations: &mut i32
+    ) -> Option<&Segment> {
         let mut current = &self.root;
         let mut successor = None;
         while let Some(node) = current {
+            *basic_operations += 1;
             if *key < node.key {
                 successor = Some(&node.key);
                 current = &node.left;
@@ -321,10 +337,13 @@ impl Treap {
         successor
     }
 
-    pub fn predecessor(&self, key: &Segment) -> Option<&Segment> {
+    pub fn predecessor(
+        &self, key: &Segment, basic_operations: &mut i32
+    ) -> Option<&Segment> {
         let mut current = &self.root;
         let mut predecessor = None;
         while let Some(node) = current {
+            *basic_operations += 1;
             if *key > node.key {
                 predecessor = Some(&node.key);
                 current = &node.right;
@@ -357,6 +376,7 @@ pub fn test_treap() {
     let n = 50;
     let mut treap = Treap::new();
     for _ in 0..10000 {
+        let ref mut basic_operations = 0;
         let x = rand::random::<f64>();
         let mut segments = Vec::new();
         for i in 0..n {
@@ -370,7 +390,7 @@ pub fn test_treap() {
                     y: rand::random::<f64>(),
                 }
             };
-            treap.insert(segment.clone());
+            treap.insert(segment.clone(), basic_operations);
             segments.push(segment.clone());
         }
         segments.sort_by(|a, b| a.cmp(b));
@@ -394,13 +414,13 @@ pub fn test_treap() {
         for i in 0..n {
             //println!("Successor and predecessor of ({}, {}), ({}, {}): ",
             //       segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
-            assert_eq!(treap.successor(&segments[i]), if i == n-1 { None } else { Some(&segments[i + 1]) });
-            assert_eq!(treap.predecessor(&segments[i]), if i == 0 { None } else { Some(&segments[i - 1]) });
+            assert_eq!(treap.successor(&segments[i], basic_operations), if i == n-1 { None } else { Some(&segments[i + 1]) });
+            assert_eq!(treap.predecessor(&segments[i], basic_operations), if i == 0 { None } else { Some(&segments[i - 1]) });
         }
         for i in 0..n {
             //println!("Removing ({}, {}), ({}, {})", segments[i].ini.x, segments[i].ini.y, segments[i].end.x, segments[i].end.y);
-            assert_eq!(treap.remove(&segments[i]), true);
-            assert_eq!(treap.find(&segments[i]), false);
+            assert_eq!(treap.remove(&segments[i], basic_operations), true);
+            assert_eq!(treap.find(&segments[i], basic_operations), false);
             //treap.print_inorder();
         }
         assert_eq!(treap.root, None);

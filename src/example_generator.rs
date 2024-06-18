@@ -7,9 +7,21 @@ pub fn create_random_example(n_segments: i32) -> SweepLineProblem {
     let mut basic_operations = 0;
 
     for _ in 0..n_segments {
-        let ini = Point{x: rand::random::<f64>(), y: rand::random::<f64>()};
-        let end = Point{x: rand::random::<f64>(), y: rand::random::<f64>()};
-        segments.push(Segment{ini, end}.to_grid(0.01));
+        while true {
+            let ini = Point {
+                x: (rand::random::<i32>() % 1000).abs() as f64,
+                y: (rand::random::<i32>() % 1000).abs() as f64,
+            };
+            let end = Point {
+                x: (rand::random::<i32>() % 1000).abs() as f64,
+                y: (rand::random::<i32>() % 1000).abs() as f64,
+            };
+            let segment = Segment{ini, end};
+            if segment.ini.x != segment.end.x && segment.ini.y != segment.end.y {
+                segments.push(segment);
+                break;
+            }
+        }
     }
 
     SweepLineProblem{segments, result, time, basic_operations}

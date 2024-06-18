@@ -24,7 +24,8 @@ struct MainState {
 impl MainState {
     fn new() -> Self {
         // Initialize your SweepLineProblem here
-        let mut sweep_line_problem = SweepLineProblem::load("problems/sweep_line_problem_2.txt");
+        let mut sweep_line_problem = SweepLineProblem::load(
+            "problems/sweep_line_problem_2.txt");
         MainState {
             sweep_line_problem,
             intersection_alpha: 0.0,
